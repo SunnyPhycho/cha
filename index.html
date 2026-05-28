@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 에셋 마스터 매니저 v3</title>
+    <title>AI 에셋 마스터 매니저 v3.1</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -144,7 +144,7 @@
 
     <div id="sidebar">
         <div class="sidebar-header">
-            <h3>에셋 마스터 v3</h3>
+            <h3>에셋 마스터 v3.1</h3>
             <div class="category-tabs">
                 <button class="tab-btn active" data-category="chars">캐릭터</button>
                 <button class="tab-btn" data-category="situations">상황</button>
@@ -166,7 +166,6 @@
             <h2>에셋을 선택하거나 새로 추가해주세요.</h2>
         </div>
 
-        <!-- 일반 에셋 편집기 -->
         <div id="editor" class="editor-panel">
             <h2 id="edit-asset-name">에셋 이름</h2>
             
@@ -206,7 +205,6 @@
             </div>
         </div>
 
-        <!-- 글로벌 설정 편집기 -->
         <div id="global-editor" class="editor-panel">
             <h2>시스템 글로벌 설정</h2>
             
@@ -250,7 +248,8 @@
         const SUPABASE_URL = 'https://klhypvvxaokucaycyxrv.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsaHlwdnZ4YW9rdWNheWN5eHJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MDg0ODgsImV4cCI6MjA5NTQ4NDQ4OH0.vp3RMzjzXqUtWC92YIx-yWi46YnUD3_wQA_DPQFSEO4';
 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 변수명 충돌 해결: supabase -> supabaseClient로 변경
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null;
         let selectedAsset = null;
@@ -277,8 +276,8 @@
             if(!email || !password) return alert('입력해주세요.');
 
             const { data, error } = isSignUpMode 
-                ? await supabase.auth.signUp({ email, password })
-                : await supabase.auth.signInWithPassword({ email, password });
+                ? await supabaseClient.auth.signUp({ email, password })
+                : await supabaseClient.auth.signInWithPassword({ email, password });
 
             if (error) alert(error.message);
             else {
@@ -289,7 +288,7 @@
         };
 
         document.getElementById('logout-btn').onclick = async () => {
-            await supabase.auth.signOut();
+            await supabaseClient.auth.signOut();
             location.reload();
         };
 
@@ -303,7 +302,7 @@
                 return;
             }
 
-            const { data: files, error } = await supabase.storage.from('user-assets').list(folderPath);
+            const { data: files, error } = await supabaseClient.storage.from('user-assets').list(folderPath);
             if(error) return console.error(error);
 
             const assets = {};
@@ -327,7 +326,7 @@
                 
                 let thumbSrc = '#333';
                 if(asset.image) {
-                    thumbSrc = supabase.storage.from('user-assets').getPublicUrl(`users/${currentUser.id}/${currentCategory}/${asset.image}`).data.publicUrl;
+                    thumbSrc = supabaseClient.storage.from('user-assets').getPublicUrl(`users/${currentUser.id}/${currentCategory}/${asset.image}`).data.publicUrl;
                 }
 
                 item.innerHTML = `
@@ -349,28 +348,25 @@
             document.getElementById('global-editor').classList.remove('active');
             document.getElementById('edit-asset-name').innerText = asset.name;
 
-            // 1. 프롬프트 텍스트 로드
             if(asset.prompt) {
-                const { data } = await supabase.storage.from('user-assets').download(`users/${currentUser.id}/${currentCategory}/${asset.prompt}`);
+                const { data } = await supabaseClient.storage.from('user-assets').download(`users/${currentUser.id}/${currentCategory}/${asset.prompt}`);
                 const text = await data.text();
                 document.getElementById('prompt-text').value = text;
             } else {
                 document.getElementById('prompt-text').value = '';
             }
 
-            // 2. 이미지 로드
             const preview = document.getElementById('ref-preview');
             if(asset.image) {
-                preview.src = supabase.storage.from('user-assets').getPublicUrl(`users/${currentUser.id}/${currentCategory}/${asset.image}`).data.publicUrl;
+                preview.src = supabaseClient.storage.from('user-assets').getPublicUrl(`users/${currentUser.id}/${currentCategory}/${asset.image}`).data.publicUrl;
                 preview.classList.remove('hidden');
             } else {
                 preview.classList.add('hidden');
             }
 
-            // 3. JSON 설정값(Strength, Fidelity) 로드
             let config = { strength: 0.6, fidelity: 0.8 };
             if(asset.config) {
-                const { data } = await supabase.storage.from('user-assets').download(`users/${currentUser.id}/${currentCategory}/${asset.config}`);
+                const { data } = await supabaseClient.storage.from('user-assets').download(`users/${currentUser.id}/${currentCategory}/${asset.config}`);
                 config = await data.json();
             }
             document.getElementById('ref-strength').value = config.strength;
@@ -379,7 +375,6 @@
             document.getElementById('fidelity-val').innerText = config.fidelity;
         }
 
-        // 슬라이더 값 실시간 표시
         document.getElementById('ref-strength').oninput = (e) => document.getElementById('strength-val').innerText = e.target.value;
         document.getElementById('ref-fidelity').oninput = (e) => document.getElementById('fidelity-val').innerText = e.target.value;
 
@@ -403,7 +398,7 @@
             if(!name) return;
 
             const fileName = `${name}.txt`;
-            const { error } = await supabase.storage.from('user-assets').upload(`users/${currentUser.id}/${currentCategory}/${fileName}`, 
+            const { error } = await supabaseClient.storage.from('user-assets').upload(`users/${currentUser.id}/${currentCategory}/${fileName}`, 
                 new Blob(['프롬프트를 입력하세요.'], {type: 'text/plain'}), { upsert: true });
 
             if(error) alert(error.message);
@@ -418,17 +413,15 @@
             const name = selectedAsset.name;
             const folderPath = `users/${currentUser.id}/${currentCategory}`;
 
-            // 1. 프롬프트 저장 (.txt)
             const text = document.getElementById('prompt-text').value;
-            await supabase.storage.from('user-assets').upload(`${folderPath}/${name}.txt`, 
+            await supabaseClient.storage.from('user-assets').upload(`${folderPath}/${name}.txt`, 
                 new Blob([text], {type: 'text/plain'}), { upsert: true });
 
-            // 2. 설정값 저장 (.json)
             const config = {
                 strength: document.getElementById('ref-strength').value,
                 fidelity: document.getElementById('ref-fidelity').value
             };
-            await supabase.storage.from('user-assets').upload(`${folderPath}/${name}.json`, 
+            await supabaseClient.storage.from('user-assets').upload(`${folderPath}/${name}.json`, 
                 new Blob([JSON.stringify(config)], {type: 'application/json'}), { upsert: true });
 
             alert('에셋과 설정값이 저장되었습니다!');
@@ -442,7 +435,7 @@
             const ext = file.name.split('.').pop().toLowerCase();
             const fileName = `${selectedAsset.name}.${ext}`;
 
-            const { error } = await supabase.storage.from('user-assets').upload(`users/${currentUser.id}/${currentCategory}/${fileName}`, file, { upsert: true });
+            const { error } = await supabaseClient.storage.from('user-assets').upload(`users/${currentUser.id}/${currentCategory}/${fileName}`, file, { upsert: true });
 
             if(error) alert(error.message);
             else {
@@ -461,7 +454,7 @@
             if(selectedAsset.image) filesToDelete.push(selectedAsset.image);
             filesToDelete.push(`${selectedAsset.name}.json`);
 
-            const { error } = await supabase.storage.from('user-assets').remove(
+            const { error } = await supabaseClient.storage.from('user-assets').remove(
                 filesToDelete.map(f => `users/${currentUser.id}/${currentCategory}/${f}`)
             );
 
@@ -474,13 +467,12 @@
                 }
         };
 
-        // --- Global Settings Logic ---
         async function loadGlobalSettings() {
             document.getElementById('welcome-msg').classList.add('hidden');
             document.getElementById('editor').classList.remove('active');
             document.getElementById('global-editor').classList.add('active');
 
-            const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+            const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).single();
             
             if(error) {
                 console.error(error);
@@ -503,15 +495,13 @@
                 updated_at: new Date().toISOString()
             };
 
-            const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id).single();
+            const { error } = await supabaseClient.from('profiles').update(updates).eq('id', currentUser.id).single();
 
             if(error) alert(error.message);
             else alert('global 설정이 저장되었습니다!');
         };
 
-        // 로그인 후 자동 로드
         window.addEventListener('DOMContentLoaded', () => {
-            // Supabase SDK 로딩 대기 후 실행
             setTimeout(loadAssets, 500);
         });
     </script>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 에셋 마스터 v4.2</title>
+    <title>AI 에셋 마스터 v4.3</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -142,7 +142,7 @@
 
     <div id="sidebar">
         <div class="sidebar-header">
-            <h3>에셋 마스터 v4.2</h3>
+            <h3>에셋 마스터 v4.3</h3>
             <div class="category-tabs">
                 <button class="tab-btn active" data-category="chars">캐릭터</button>
                 <button class="tab-btn" data-category="situations">상황</button>
@@ -263,20 +263,30 @@
             authToggle.innerText = isSignUpMode ? '이미 계정이 있나요? 로그인' : '계정이 없으신가요? 회원가입';
         };
 
+        // [수정] 가입 로직: admin 여부에 따라 기본값 설정 다르게 함
         async function handleSignUp(email, password, username) {
             const { data, error } = await supabaseClient.auth.signUp({ email, password });
             if (error) throw error;
 
-            const { data: adminData, error: adminErr } = await supabaseClient.from('profiles').select('*').eq('username', 'admin').single();
-            if (adminErr) throw new Error('관리자(admin) 프로필이 없어 기본값을 가져올 수 없습니다.');
+            let defaultValues = {
+                base_positive: 'masterpiece, best quality, highly detailed',
+                base_negative: 'lowres, bad anatomy, worst quality',
+                ai_provider: 'novelai'
+            };
+
+            if(username !== 'admin') {
+                const { data: adminData, error: adminErr } = await supabaseClient.from('profiles').select('*').eq('username', 'admin').single();
+                if (!adminErr && adminData) {
+                    defaultValues.base_positive = adminData.base_positive || defaultValues.base_positive;
+                    defaultValues.base_negative = adminData.base_negative || defaultValues.base_negative;
+                }
+            }
 
             const { error: profileErr } = await supabaseClient.from('profiles').insert([
                 { 
                     id: data.user.id, 
                     username: username, 
-                    base_positive: adminData.base_positive,
-                    base_negative: adminData.base_negative,
-                    ai_provider: 'novelai'
+                    ...defaultValues
                 }
             ]);
             if (profileErr) throw profileErr;
@@ -289,7 +299,20 @@
             if (error) throw error;
 
             const { data: profile, error: pErr } = await supabaseClient.from('profiles').select('username').eq('id', data.user.id).single();
-            if (pErr) throw new Error('사용자 프로필 정보를 찾을 수 없습니다.');
+            
+            // [수정] 로그인 시 프로필이 없으면(유령계정) 즉시 기본 프로필 생성
+            if (pErr || !profile) {
+                console.warn('프로필이 없어 기본값을 생성합니다.');
+                const { data: adminData } = await supabaseClient.from('profiles').select('*').eq('username', 'admin').single();
+                const defaults = adminData || { base_positive: 'masterpiece', base_negative: 'lowres' };
+                
+                await supabaseClient.from('profiles').insert([
+                    { id: data.user.id, username: email.split('@')[0], ...defaults }
+                ]);
+                
+                const { data: newProfile } = await supabaseClient.from('profiles').select('username').eq('id', data.user.id).single();
+                return { user: data.user, username: newProfile.username };
+            }
 
             return { user: data.user, username: profile.username };
         }
@@ -344,6 +367,7 @@
                 if(!assets[name]) assets[name] = { name, prompt: null, image: null, config: null };
                 if(ext === 'txt') assets[name].prompt = file.name;
                 if(['webp', 'png', 'jpg', 'jpeg'].includes(ext)) assets[name].image = file.name;
+                if(ext === 'json') assets[name].config = file.// 오타 수정: assets[name].config = file.name;
                 if(ext === 'json') assets[name].config = file.name;
             });
 
@@ -459,11 +483,11 @@
 
         document.getElementById('upload-img-btn').onclick = () => {
             document.getElementById('ref-upload').click();
-        };
+        }
 
         document.getElementById('ref-upload').onchange = async (e) => {
             const file = e.target.files[0];
-            if(!file || !selectedSasset) return;
+            if(!file || !selectedAsset) return;
 
             const ext = file.name.split('.').pop().toLowerCase();
             const fileName = `${selectedAsset.name}.${ext}`;
@@ -483,7 +507,7 @@
             if(!selectedAsset || !confirm('정말 삭제하시겠습니까?')) return;
             
             const filesToDelete = [];
-            if(selectedAsset.prompt) filesToDelete.push(`${selectedAsset.name}.txt`);
+            if(selectedAsset.prompt) filesToDelete.push(`${selectedSasset.name}.txt`);
             if(selectedAsset.image) filesToDelete.push(selectedAsset.image);
             filesToDelete.push(`${selectedAsset.name}.json`);
 
